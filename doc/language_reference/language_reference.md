@@ -13,7 +13,7 @@ DDlog programs refer to types, functions, relations, and constructors using *sco
 identifier prefixed by path to the *module* that declares the identifier, which an be empty if the identifier
 is defined in the local scope).
 
-```
+```EBNF
     uc_identifier ::= [A..Z][a..zA..Z0..9_]*
     lc_identifier ::= [a..z_][a..zA..Z0..9_]*
     identifier ::= uc_identifier | lc_identifier
