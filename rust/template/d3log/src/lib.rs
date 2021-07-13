@@ -1,6 +1,7 @@
 pub mod broadcast;
 pub mod ddvalue_batch;
 mod dispatch;
+mod dred;
 pub mod error;
 mod forwarder;
 mod json_framer;
