@@ -20,8 +20,8 @@ use tokio::{
 };
 
 use crate::{
-    async_error, fact, function, json_framer::JsonFramer, Batch, DDValueBatch, Dispatch, Error,
-    Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
+    async_error, fact, json_framer::JsonFramer, nega_fact, Batch, DDValueBatch, Dispatch, Dred,
+    Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
 };
 
 use differential_datalog::record::*;
@@ -124,6 +124,8 @@ pub async fn tcp_bind(
         let sclone = Arc::new(Mutex::new(socket));
         let dclone = data.clone();
         let eclone = eval.clone();
+        let mclone = management.clone();
+        let (dred, dred_port) = Dred::new(eclone.clone(), dclone);
 
         tokio::spawn(async move {
             let mut jf = JsonFramer::new();
@@ -136,13 +138,22 @@ pub async fn tcp_bind(
                             .append(&buffer[0..bytes_input])
                             .expect("json coding error")
                         {
-                            dclone.send(Batch::Value(async_error!(
-                                eclone.clone(),
+                            dred_port.send(Batch::Value(async_error!(
+                                mclone.clone(),
                                 eclone.clone().deserialize_batch(i)
                             )));
                         }
                     }
-                    Err(x) => panic!("read error {}", x),
+                    Err(x) => {
+                        // call Dred close to retract all the facts
+                        dred.close();
+                        // Retract the connection status fact too!
+                        mclone.send(nega_fact!(
+                            d3_application::ConnectionStatus,
+                            time => eclone.clone().now().into_record(),
+                            me => me.into_record(),
+                            them => me.into_record()));
+                    }
                 }
             }
         });

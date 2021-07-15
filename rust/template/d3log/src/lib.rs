@@ -1,7 +1,7 @@
 pub mod broadcast;
 pub mod ddvalue_batch;
 mod dispatch;
-mod dred;
+pub mod dred;
 pub mod error;
 mod forwarder;
 mod json_framer;
@@ -19,6 +19,7 @@ use crate::{
     broadcast::{Broadcast, PubSub},
     ddvalue_batch::DDValueBatch,
     dispatch::Dispatch,
+    dred::Dred,
     error::Error,
     forwarder::Forwarder,
     record_batch::RecordBatch,
