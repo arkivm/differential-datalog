@@ -45,7 +45,7 @@ impl Transport for Forwarder {
             }
         }
 
-        for (nid, b) in output.drain() {
+        for (nid, b) in output {
             match self.fib.lock().expect("lock").get(&nid) {
                 Some(x) => x.send(Batch::Value(b.deref().clone())),
                 None => async_error!(
