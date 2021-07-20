@@ -20,8 +20,8 @@ use tokio::{
 };
 
 use crate::{
-    async_error, fact, json_framer::JsonFramer, nega_fact, Batch, DDValueBatch, Dispatch, Dred,
-    Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
+    async_error, fact, function, json_framer::JsonFramer, nega_fact, Batch, DDValueBatch, Dispatch,
+    Dred, Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
 };
 
 use differential_datalog::record::*;
@@ -139,7 +139,7 @@ pub async fn tcp_bind(
                             .expect("json coding error")
                         {
                             dred_port.send(Batch::Value(async_error!(
-                                mclone.clone(),
+                                eclone.clone(),
                                 eclone.clone().deserialize_batch(i)
                             )));
                         }
