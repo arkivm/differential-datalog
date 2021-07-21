@@ -1,6 +1,7 @@
 pub mod broadcast;
 pub mod ddvalue_batch;
 mod dispatch;
+mod display_port;
 pub mod error;
 mod forwarder;
 mod json_framer;
@@ -18,6 +19,7 @@ use crate::{
     broadcast::{Broadcast, PubSub},
     ddvalue_batch::DDValueBatch,
     dispatch::Dispatch,
+    display_port::DisplayPort,
     error::Error,
     forwarder::Forwarder,
     record_batch::RecordBatch,
@@ -204,6 +206,20 @@ pub fn start_instance(
     let forwarder_clone = forwarder.clone();
     let eval_clone = eval.clone();
     let dispatch_clone = dispatch.clone();
+    let eval_clone2 = eval.clone();
+    let management_clone2 = broadcast.clone();
+    let forwarder_clone2 = forwarder.clone();
+
+    rt.spawn(async move {
+        DisplayPort::new(
+            8080,
+            eval_clone2.clone(),
+            management_clone.clone(),
+            forwarder_clone.clone(),
+            management_clone.clone(),
+        )
+        .await;
+    });
 
     let handle = rt.spawn(async move {
         async_error!(
@@ -211,10 +227,10 @@ pub fn start_instance(
             tcp_bind(
                 dispatch_clone,
                 uuid,
-                forwarder_clone,
-                management_clone.clone(),
+                forwarder_clone2,
+                management_clone2.clone(),
                 eval_clone.clone(),
-                management_clone.clone(),
+                management_clone2.clone(),
             )
             .await
         );
