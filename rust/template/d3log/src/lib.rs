@@ -11,8 +11,11 @@ mod tcp_network;
 use core::fmt;
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::mpsc::{self, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
+use std::thread;
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -27,6 +30,7 @@ use crate::{
 };
 
 pub type Node = D3logLocationId;
+pub type Uuid = u128;
 
 pub trait EvaluatorTrait {
     fn ddvalue_from_record(&self, id: String, r: Record) -> Result<DDValue, Error>;
@@ -108,6 +112,18 @@ impl Transport for EvalPort {
     }
 }
 
+pub struct ThreadManager {
+    threads: HashMap<Uuid, (isize, Option<Sender<()>>)>,
+}
+
+impl ThreadManager {
+    pub fn new() -> Self {
+        Self {
+            threads: HashMap::new(),
+        }
+    }
+}
+
 struct ThreadInstance {
     rt: Arc<tokio::runtime::Runtime>,
     eval: Evaluator,
@@ -116,25 +132,67 @@ struct ThreadInstance {
     broadcast: Arc<Broadcast>,
     // process needs this too
     accumulator: Arc<Mutex<DDValueBatch>>,
+    manager: Arc<Mutex<ThreadManager>>,
 }
 
 // we're just throwing this into the same runtime - do we want/need scheduling isolation?
 // xxx handle deletes
-impl Transport for ThreadInstance {
+impl Transport for Arc<ThreadInstance> {
     fn send(&self, b: Batch) {
-        for (_, p, _weight) in &RecordBatch::from(self.eval.clone(), b) {
+        for (_, p, weight) in &RecordBatch::from(self.eval.clone(), b) {
             // async_error variant for Some
             let uuid_record = p.get_struct_field("id").unwrap();
-            let uuid = async_error!(self.eval.clone(), u128::from_record(uuid_record));
+            let uuid = async_error!(self.clone().eval.clone(), Uuid::from_record(uuid_record));
 
-            let (_p, _init_batch, ep, _jh) = async_error!(
-                self.eval,
-                start_instance(self.rt.clone(), self.new_evaluator.clone(), uuid)
-            );
+            let mut manager = self.manager.lock().expect("lock");
+            let value = manager
+                .threads
+                .entry(uuid)
+                .or_insert_with(|| (weight, None));
+            let w = value.0;
+            let thread_handle = &value.1;
+            if w > 0 {
+                // Start instance if one is not already present
+                if thread_handle.is_none() {
+                    let (tx, rx) = mpsc::channel();
+                    let new_self = self.clone();
+                    println!("Spawning a thread");
+                    value.1 = Some(tx.clone());
+                    thread::spawn(move || {
+                        let (_p, _init_batch, ep, _jh) = async_error!(
+                            new_self.eval,
+                            start_instance(
+                                new_self.rt.clone(),
+                                new_self.new_evaluator.clone(),
+                                uuid
+                            )
+                        );
+                        println!(
+                            "Started a new instance with thread id {:?}",
+                            thread::current().id()
+                        );
+                        ep.send(Batch::Value(
+                            new_self.accumulator.lock().expect("lock").clone(),
+                        ));
 
-            ep.send(Batch::Value(self.accumulator.lock().expect("lock").clone()));
+                        loop {
+                            match rx.try_recv() {
+                                Ok(_) | Err(TryRecvError::Disconnected) => {
+                                    println!("Terminating.");
+                                    break;
+                                }
+                                Err(TryRecvError::Empty) => {}
+                            }
+                        }
+                    });
+                }
+            } else if w <= 0 {
+                // TODO: check if thread termination works
+                if let Some(tx) = thread_handle {
+                    let _ = tx.send(());
+                }
+            }
 
-            self.forwarder.register(uuid, ep.clone());
             let threads: u64 = 1;
             let bytes: u64 = 1;
 
@@ -163,7 +221,7 @@ impl Transport for DebugPort {
 pub fn start_instance(
     rt: Arc<Runtime>,
     new_evaluator: Arc<dyn Fn(Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
-    uuid: u128,
+    uuid: Uuid,
 ) -> Result<(Port, Batch, Port, tokio::task::JoinHandle<()>), Error> {
     let broadcast = Broadcast::new();
     let (eval, init_batch) = new_evaluator(broadcast.clone())?;
@@ -178,14 +236,15 @@ pub fn start_instance(
 
     dispatch.clone().register(
         "d3_application::ThreadInstance",
-        Arc::new(ThreadInstance {
+        Arc::new(Arc::new(ThreadInstance {
             rt: rt.clone(),
             accumulator: accu_batch.clone(),
             eval: eval.clone(),
             forwarder: forwarder.clone(),
             new_evaluator: new_evaluator.clone(),
             broadcast: broadcast.clone(),
-        }),
+            manager: Arc::new(Mutex::new(ThreadManager::new())),
+        })),
     )?;
 
     // shouldn't evaluator just implement Transport?
