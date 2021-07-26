@@ -6,7 +6,7 @@ pub mod error;
 mod forwarder;
 mod json_framer;
 pub mod record_batch;
-mod tcp_network;
+pub mod tcp_network;
 
 use colored::Colorize;
 use core::fmt;
@@ -14,7 +14,7 @@ use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::mpsc::{self, Sender, TryRecvError};
+use std::sync::mpsc::{self, channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::runtime::{Builder, Runtime};
@@ -94,13 +94,13 @@ impl Transport for AccumulatePort {
     }
 }
 
-use std::collections::VecDeque;
-
 struct EvalPort {
     eval: Evaluator,
     forwarder: Port,
     dispatch: Port,
-    queue: Arc<Mutex<VecDeque<Batch>>>,
+    //    queue: Arc<Mutex<VecDeque<Batch>>>,
+    s: Arc<Mutex<Sender<Batch>>>,
+    r: Arc<Mutex<Receiver<Batch>>>,
 }
 
 impl Transport for EvalPort {
@@ -112,27 +112,19 @@ impl Transport for EvalPort {
             RecordBatch::from(self.eval.clone(), b.clone())
         );
         self.dispatch.send(b.clone());
-
-        {
-            self.queue.lock().expect("lock").push_back(b.clone());
-        }
+        async_error!(
+            self.eval.clone(),
+            self.s.lock().expect("lock").send(b.clone())
+        );
 
         loop {
-            let b = {
-                match self.queue.try_lock() {
-                    Ok(mut x) => match x.pop_front() {
-                        Some(x) => x.clone(),
-                        None => {
-                            return;
-                        }
-                    },
-                    Err(_) => {
-                        return;
-                    }
+            match self.r.lock().expect("lock").try_recv() {
+                Ok(x) => {
+                    let out = async_error!(self.eval.clone(), self.eval.eval(x.clone()));
+                    self.forwarder.send(out.clone());
                 }
-            };
-            let out = async_error!(self.eval.clone(), self.eval.eval(b.clone()));
-            self.forwarder.send(out.clone());
+                Err(_) => return,
+            }
         }
     }
 }
@@ -150,7 +142,7 @@ impl ThreadManager {
 }
 
 struct ThreadInstance {
-    rt: Arc<tokio::runtime::Runtime>,
+    // rt: Arc<tokio::runtime::Runtime>,
     eval: Evaluator,
     evalport: Port,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
@@ -182,9 +174,10 @@ impl Transport for Arc<ThreadInstance> {
                 // Start instance if one is not already present
                 if thread_handle.is_none() {
                     let (tx, rx) = mpsc::channel();
-                    let new_self = self.clone();
                     println!("[THREAD_INSTANCE] Spawning a thread");
+                    let self_clone = self.clone();
                     value.1 = Some(tx.clone());
+                    let eval_clone = self.eval.clone();
                     thread::spawn(move || {
                         let th_name = String::from("async-rt-") + &uuid.to_string();
                         let rt = Arc::new(
@@ -197,20 +190,29 @@ impl Transport for Arc<ThreadInstance> {
                                 .unwrap(),
                         );
 
-                        let (_p, _init_batch, ep, _jh, _dispatch, forwarder) = async_error!(
-                            new_self.eval,
-                            start_instance(rt.clone(), new_self.new_evaluator.clone(), uuid)
+                        let (broadcast, _init_batch, ep, _jh, _dispatch, _forwarder) = async_error!(
+                            self_clone.eval,
+                            start_instance(rt.clone(), self_clone.new_evaluator.clone(), uuid)
                         );
                         println!(
                             "[THREAD_INSTANCE] Started a new instance with thread id {:?}",
                             thread::current().id()
                         );
                         ep.send(Batch::Value(
-                            new_self.accumulator.lock().expect("lock").clone(),
+                            self_clone.accumulator.lock().expect("lock").clone(),
                         ));
 
-                        new_self.forwarder.register(uuid, ep.clone());
-                        //forwarder.register(eval.clone().myself(), ep.clone());
+                        async_error!(
+                            eval_clone.clone(),
+                            self_clone.broadcast.clone().couple(broadcast)
+                        );
+
+                        self_clone.forwarder.register(uuid, ep.clone());
+                        /* make transport here configurable
+                                                new_self.forwarder.register(uuid, ep.clone());
+                                                forwarder
+                                                  .register(new_self.eval.clone().myself(), new_self.evalport.clone());
+                        */
 
                         loop {
                             match rx.try_recv() {
@@ -284,30 +286,31 @@ pub fn start_instance(
     rt: Arc<Runtime>,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
     uuid: u128,
-) -> Result<(Port, Batch, Port, JoinHandle<()>, Port, Arc<Forwarder>), Error> {
+) -> Result<(Arc<Broadcast>, Batch, Port, Port, Arc<Forwarder>), Error> {
     let broadcast = Broadcast::new();
     let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
     let dispatch = Arc::new(Dispatch::new(eval.clone()));
 
-    broadcast.clone().subscribe(dispatch.clone());
-    broadcast
-        .clone()
-        .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
+    //    broadcast
+    //        .clone()
+    //        .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
     let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
     let accu_batch = Arc::new(Mutex::new(DDValueBatch::new()));
 
+    let (esend, erecv) = channel();
     // shouldn't evaluator just implement Transport?
     let eval_port = Arc::new(EvalPort {
         forwarder: forwarder.clone(),
         dispatch: dispatch.clone(),
         eval: eval.clone(),
-        queue: Arc::new(Mutex::new(VecDeque::new())),
+        s: Arc::new(Mutex::new(esend)),
+        r: Arc::new(Mutex::new(erecv)),
     });
 
     dispatch.clone().register(
         "d3_application::ThreadInstance",
         Arc::new(Arc::new(ThreadInstance {
-            rt: rt.clone(),
+            //            rt: rt.clone(),
             accumulator: accu_batch.clone(),
             eval: eval.clone(),
             evalport: eval_port.clone(),
@@ -323,6 +326,7 @@ pub fn start_instance(
         eval: eval.clone(),
         b: accu_batch.clone(),
     }));
+
     eval_port.send(fact!(d3_application::Myself, me => uuid.into_record()));
 
     let management_clone = broadcast.clone();
@@ -332,7 +336,8 @@ pub fn start_instance(
     let rt_clone = rt.clone();
 
     println!("[{}] calling tcp_bind", function!().blue().bold());
-    let handle = rt_clone.spawn(async move {
+    // make transport here configurable
+    let _handle = rt_clone.spawn(async move {
         async_error!(
             eval.clone(),
             tcp_bind(
@@ -347,7 +352,6 @@ pub fn start_instance(
             .await
         );
     });
-    Ok((
-        broadcast, init_batch, eval_port, handle, dispatch, forwarder,
-    ))
+
+    Ok((broadcast, init_batch, eval_port, dispatch, forwarder))
 }

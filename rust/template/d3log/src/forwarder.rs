@@ -112,6 +112,7 @@ impl Forwarder {
     }
 
     pub fn register(&self, n: Node, p: Port) {
+        println!("register {} {}", self.eval.clone().myself(), n);
         // overwrite warning?
         let entry = self.lookup(n);
         {
@@ -120,11 +121,12 @@ impl Forwarder {
 
         while let Some(b) = { entry.lock().expect("lock").batches.pop_front() } {
             println!(
-                "{} {} {}  batches send!",
+                "{} {} {}  dequeue batches",
                 "[FORWARDER]".yellow().bold().italic(),
                 format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
                 "[REGISTER]".cyan().italic()
             );
+
             p.clone().send(b);
         }
         while let Some(r) = { entry.lock().expect("lock").registrations.pop_front() } {
@@ -136,6 +138,7 @@ impl Forwarder {
                 format!("0x{:x}", &self as *const _ as u64).green(),
                 r.to_string().cyan()
             );
+
             self.register(r, p.clone());
         }
     }
@@ -169,6 +172,12 @@ impl Transport for Forwarder {
                     Ok(mut x) => match &x.port {
                         Some(x) => x.clone(),
                         None => {
+                            println!(
+                                "queue {} {} {}",
+                                self.eval.clone().myself(),
+                                nid,
+                                RecordBatch::from(self.eval.clone(), Batch::Value(*b.clone()))
+                            );
                             x.batches.push_front(Batch::Value(*b));
                             break;
                         }
