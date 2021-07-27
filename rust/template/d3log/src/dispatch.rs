@@ -52,7 +52,7 @@ impl Dispatch {
         println!(
             "{} create for {}",
             "[DISPATCHER]".magenta().bold(),
-            format!("[uuid:{}]", d.eval.clone().myself().to_string()).red(),
+            format!("[uuid:{:X}]", d.eval.clone().myself()).red(),
         );
         d
     }
@@ -65,7 +65,7 @@ impl Dispatch {
         println!(
             "{} {} {} {} for relation {}",
             "[DISPATCHER]".magenta().bold(),
-            format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
+            format!("[uuid:{:X}]", self.eval.clone().myself()).red(),
             format!("[id:{}]", self.count.load(Ordering::SeqCst)).green(),
             "REGISTRATION".italic().yellow(),
             relation_name,

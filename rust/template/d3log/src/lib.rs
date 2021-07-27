@@ -106,9 +106,9 @@ struct EvalPort {
 impl Transport for EvalPort {
     fn send(&self, b: Batch) {
         println!(
-            "{} [uuid:{}] {}",
+            "{} {} {}",
             "[EVALPORT]".yellow(),
-            self.eval.clone().myself().to_string().red(),
+            format!("[uuid:{:X}]", self.eval.clone().myself()).red(),
             RecordBatch::from(self.eval.clone(), b.clone())
         );
         self.dispatch.send(b.clone());
@@ -262,18 +262,18 @@ impl Transport for DebugPort {
                 };
 
                 println!(
-                    "{} [uuid={}] {} {} {}",
+                    "{} {} {} {} {}",
                     "[DEBUG_PORT]".blue().bold(),
-                    self.eval.clone().myself().to_string().red(),
+                    format!("[uuid:{:X}]", self.eval.clone().myself()).red(),
                     new_name,
                     f,
                     w
                 );
             } else {
                 println!(
-                    "{} [uuid={}] {} {}",
+                    "{} {} {} {}",
                     "[DEBUG_PORT]".blue().bold(),
-                    self.eval.clone().myself().to_string().red(),
+                    format!("[uuid:{:X}]", self.eval.clone().myself()).red(),
                     f,
                     w
                 );
@@ -286,7 +286,17 @@ pub fn start_instance(
     rt: Arc<Runtime>,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
     uuid: u128,
-) -> Result<(Arc<Broadcast>, Batch, Port, Port, Arc<Forwarder>), Error> {
+) -> Result<
+    (
+        Arc<Broadcast>,
+        Batch,
+        Port,
+        JoinHandle<()>,
+        Port,
+        Arc<Forwarder>,
+    ),
+    Error,
+> {
     let broadcast = Broadcast::new();
     let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
     let dispatch = Arc::new(Dispatch::new(eval.clone()));
@@ -337,7 +347,7 @@ pub fn start_instance(
 
     println!("[{}] calling tcp_bind", function!().blue().bold());
     // make transport here configurable
-    let _handle = rt_clone.spawn(async move {
+    let handle = rt_clone.spawn(async move {
         async_error!(
             eval.clone(),
             tcp_bind(
@@ -353,5 +363,7 @@ pub fn start_instance(
         );
     });
 
-    Ok((broadcast, init_batch, eval_port, dispatch, forwarder))
+    Ok((
+        broadcast, init_batch, eval_port, handle, dispatch, forwarder,
+    ))
 }

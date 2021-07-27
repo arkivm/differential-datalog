@@ -47,8 +47,9 @@ impl Transport for AddressListener {
             if let Some(destination) = v.get_struct_field("destination") {
                 if let Some(location) = v.get_struct_field("location") {
                     println!(
-                        "address adv {} {} {}",
-                        self.eval.clone().myself(),
+                        "{} {} address adv dest: {} from: {}",
+                        "ADDRESS_LISTENER".blue().bold(),
+                        format!("[uuid:{:X}]", self.eval.clone().myself()).red(),
                         destination,
                         location
                     );
@@ -165,8 +166,9 @@ pub async fn tcp_bind(
         let (socket, a) = listener.accept().await?;
 
         println!(
-            "[{}] Socket accepted client {} <-> server {}!",
+            "[{}] {} Socket accepted client {} <-> server {}!",
             function!().yellow().on_black(),
+            format!("[uuid:{:X}]", eclone.myself()).red(),
             a.to_string().black().on_yellow(),
             addr.to_string().yellow()
         );
@@ -246,7 +248,13 @@ impl Transport for TcpPeer {
                 println!("Trying to connect to {}", tcp_peer.address);
                 tcp_peer.stream = match TcpStream::connect(tcp_peer.address).await {
                     Ok(x) => {
-                        println!("connect {} {}", addr, tcp_peer.address);
+                        println!(
+                            "{} {} connect src: {} dst: {}",
+                            "[TCP_PEER]".blue().green().italic(),
+                            format!("[uuid:{:X}]", addr).red(),
+                            x.local_addr().unwrap(),
+                            tcp_peer.address
+                        );
                         Some(Arc::new(Mutex::new(x)))
                     }
                     Err(_x) => panic!("connection failure {}", tcp_peer.address),

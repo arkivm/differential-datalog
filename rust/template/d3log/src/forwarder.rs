@@ -116,6 +116,15 @@ impl Forwarder {
         // overwrite warning?
         let entry = self.lookup(n);
         {
+            println!(
+                "{} {} {} {} from uuid {}",
+                "[FORWARDER]".yellow().bold().italic(),
+                format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
+                "REGISTRATIION".yellow(),
+                format!("0x{:x}", &self as *const _ as u64).green(),
+                n.to_string().cyan()
+            );
+
             entry.lock().expect("lock").port = Some(p.clone());
         }
 
@@ -130,15 +139,6 @@ impl Forwarder {
             p.clone().send(b);
         }
         while let Some(r) = { entry.lock().expect("lock").registrations.pop_front() } {
-            println!(
-                "{} {} {} {} from uuid {}",
-                "[FORWARDER]".yellow().bold().italic(),
-                format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
-                "REGISTRATIION".yellow(),
-                format!("0x{:x}", &self as *const _ as u64).green(),
-                r.to_string().cyan()
-            );
-
             self.register(r, p.clone());
         }
     }
