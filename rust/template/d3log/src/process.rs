@@ -7,8 +7,9 @@
 
 use {
     crate::{
-        async_error, broadcast::PubSub, error::Error, fact, function, json_framer::JsonFramer,
-        recfact, send_error, Batch, Evaluator, FactSet, Instance, Node, Port, RecordSet, Transport,
+        async_error, basefact, broadcast::PubSub, error::Error, fact, function,
+        json_framer::JsonFramer, recfact, send_error, Batch, Evaluator, FactSet, Instance, Node,
+        Port, RecordSet, Transport,
     },
     differential_datalog::record::*,
     nix::sys::signal::*,
@@ -169,7 +170,7 @@ impl Child {
         let i2 = self.instance.clone();
         self.instance.clone().rt.spawn(async move {
             let i3 = i2.clone();
-            let i4 = i2.clone();            
+            let i4 = i2.clone();
             async_error!(
                 i3.eval.clone(),
                 read_output(fd, move |b: &[u8]| {

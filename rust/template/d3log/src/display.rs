@@ -1,6 +1,6 @@
 use crate::{
-    async_error, fact, function, send_error, Batch, Evaluator, FactSet, Instance, Node, RecordSet,
-    Transport,
+    async_error, basefact, fact, function, send_error, Batch, Evaluator, FactSet, Instance, Node,
+    RecordSet, Transport,
 };
 use differential_datalog::record::{IntoRecord, Record};
 use futures_util::stream::StreamExt;

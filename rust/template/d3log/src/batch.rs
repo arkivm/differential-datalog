@@ -43,3 +43,13 @@ impl Display for Batch {
         f.write_str(&format!("({} {})", self.meta, self.data))
     }
 }
+
+mod tests {
+    use super::*;
+    use crate::record_set::{basefact, fact};
+
+    fn serialize_deserialize() {
+        let b = fact!(d3_test::Foo, bar => 0xabcd_u64.into_record());
+        assert_eq!(b.deserialize(b.serialize().unwrap()).unwrap(), b.clone());
+    }
+}

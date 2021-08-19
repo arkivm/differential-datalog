@@ -13,8 +13,8 @@
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpListener, net::TcpStream, sync::Mutex};
 
 use crate::{
-    async_error, async_expect_some, fact, function, json_framer::JsonFramer, recfact, send_error,
-    Batch, Dred, Error, Evaluator, FactSet, Instance, RecordSet, Transport,
+    async_error, async_expect_some, basefact, fact, function, json_framer::JsonFramer, recfact,
+    send_error, Batch, Dred, Error, Evaluator, FactSet, Instance, RecordSet, Transport,
 };
 
 use differential_datalog::record::*;

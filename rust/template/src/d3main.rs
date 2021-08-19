@@ -1,5 +1,6 @@
 use crate::{relid2name, relval_from_record, Relations};
 use d3log::{
+    basefact,
     batch::Batch,
     broadcast::PubSub,
     display::Display,

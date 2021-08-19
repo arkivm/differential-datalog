@@ -46,18 +46,14 @@ macro_rules! fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
         Batch::new(FactSet::Empty(),
                    FactSet::Record(RecordSet::singleton(
-                       Record::NamedStruct(
-                           Cow::from(stringify!($rel).to_string()),
-                           vec![$((Cow::from(stringify!($n)), $v),)*]), 1)))}
+                       basefact!($rel, $($n => $v),*), 1)))}
 }
 
 #[macro_export]
 macro_rules! recfact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
         RecordSet::singleton(
-            Record::NamedStruct(
-                Cow::from(stringify!($rel).to_string()),
-                vec![$((Cow::from(stringify!($n)), $v),)*]), 1)}
+            basefact!($rel, $($n => $v),*), 1)}
 }
 
 #[macro_export]
@@ -65,9 +61,7 @@ macro_rules! nega_fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
         Batch::new(FactSet::Empty(),
                    FactSet::Record(RecordSet::singleton(
-                       Record::NamedStruct(
-                           Cow::from(stringify!($rel).to_string()),
-                           vec![$((Cow::from(stringify!($n)), $v),)*]), -1)))
+                        basefact!($rel, $($n => $v),*), -1)))
     }
 }
 

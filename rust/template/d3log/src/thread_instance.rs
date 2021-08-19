@@ -1,7 +1,7 @@
 // support creating instances (of the same program) on a separate thread in the same address space
 use crate::{
-    async_error, broadcast::PubSub, fact, function, send_error, tcp_bind, Batch, Error, Evaluator,
-    FactSet, Instance, Node, Port, RecordSet, Transport,
+    async_error, basefact, broadcast::PubSub, fact, function, send_error, tcp_bind, Batch, Error,
+    Evaluator, FactSet, Instance, Node, Port, RecordSet, Transport,
 };
 use differential_datalog::record::*;
 use std::borrow::Cow;
